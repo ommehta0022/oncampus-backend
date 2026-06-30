@@ -1,0 +1,338 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USERS & AUTHENTICATION
+// ============================================
+
+model User {
+  id            String      @id @default(uuid())
+  phoneHash     String      @unique @map("phone_hash")
+  name          String?
+  city          String?
+  course        String?
+  avatarUrl     String?     @map("avatar_url")
+  verified      Boolean     @default(false)
+  status        UserStatus  @default(active)
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+  lastSeenAt    DateTime?   @map("last_seen_at")
+
+  devices           UserDevice[]
+  institutions      UserInstitution[]
+  groupMemberships  GroupMember[]
+  createdGroups     Group[]
+  messages          Message[]
+  joinRequests      JoinRequest[]
+  reportsMade       Report[]        @relation("reporter")
+  reportsReceived   Report[]        @relation("reported_user")
+
+  @@index([phoneHash])
+  @@index([city])
+  @@index([verified])
+  @@map("users")
+}
+
+enum UserStatus {
+  active
+  muted
+  banned
+}
+
+model UserDevice {
+  id         String    @id
+  userId     String    @map("user_id")
+  platform   String
+  pushToken  String?   @map("push_token")
+  trusted    Boolean   @default(true)
+  lastSeenAt DateTime? @map("last_seen_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([pushToken])
+  @@map("user_devices")
+}
+
+model RefreshToken {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  deviceId     String    @map("device_id")
+  tokenHash    String    @unique @map("token_hash")
+  family       String
+  revokedAt    DateTime? @map("revoked_at")
+  expiresAt    DateTime  @map("expires_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  lastUsedAt   DateTime? @map("last_used_at")
+
+  @@index([userId])
+  @@index([deviceId])
+  @@index([family])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model OtpChallenge {
+  id          String    @id @default(uuid())
+  phone       String
+  codeHash    String    @map("code_hash")
+  attempts    Int       @default(0)
+  verified    Boolean   @default(false)
+  expiresAt   DateTime  @map("expires_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  verifiedAt  DateTime? @map("verified_at")
+
+  @@index([phone])
+  @@index([expiresAt])
+  @@map("otp_challenges")
+}
+
+// ============================================
+// INSTITUTIONS
+// ============================================
+
+model Institution {
+  id                 String   @id @default(uuid())
+  name               String
+  city               String
+  verificationPolicy Json     @default("{}") @map("verification_policy")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  users  UserInstitution[]
+  groups Group[]
+
+  @@index([city])
+  @@map("institutions")
+}
+
+model UserInstitution {
+  userId             String   @map("user_id")
+  institutionId      String   @map("institution_id")
+  verificationStatus String   @map("verification_status")
+  verifiedAt         DateTime? @map("verified_at")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, institutionId])
+  @@index([institutionId])
+  @@map("user_institutions")
+}
+
+// ============================================
+// GROUPS & MEMBERSHIP
+// ============================================
+
+model Group {
+  id            String          @id @default(uuid())
+  institutionId String?         @map("institution_id")
+  name          String
+  description   String?
+  city          String
+  category      String
+  visibility    GroupVisibility
+  joinPolicy    JoinPolicy      @map("join_policy")
+  memberLimit   Int             @default(50000) @map("member_limit")
+  createdBy     String          @map("created_by")
+  avatarUrl     String?         @map("avatar_url")
+  official      Boolean         @default(false)
+  deletedAt     DateTime?       @map("deleted_at")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  institution  Institution?  @relation(fields: [institutionId], references: [id])
+  creator      User          @relation(fields: [createdBy], references: [id])
+  members      GroupMember[]
+  messages     Message[]
+  joinRequests JoinRequest[]
+  reports      Report[]
+
+  @@index([institutionId])
+  @@index([city])
+  @@index([category])
+  @@index([visibility])
+  @@index([createdAt])
+  @@map("groups")
+}
+
+enum GroupVisibility {
+  public
+  private
+}
+
+enum JoinPolicy {
+  request_to_join
+  auto_approve_verified
+  invite_only
+}
+
+model GroupMember {
+  groupId  String       @map("group_id")
+  userId   String       @map("user_id")
+  role     MemberRole
+  status   MemberStatus
+  joinedAt DateTime     @default(now()) @map("joined_at")
+  mutedAt  DateTime?    @map("muted_at")
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, userId])
+  @@index([userId])
+  @@index([role])
+  @@index([status])
+  @@map("group_members")
+}
+
+enum MemberRole {
+  owner
+  admin
+  moderator
+  member
+}
+
+enum MemberStatus {
+  active
+  muted
+  removed
+}
+
+model JoinRequest {
+  id         String            @id @default(uuid())
+  groupId    String            @map("group_id")
+  userId     String            @map("user_id")
+  status     JoinRequestStatus
+  source     String
+  decidedBy  String?           @map("decided_by")
+  decidedAt  DateTime?         @map("decided_at")
+  createdAt  DateTime          @default(now()) @map("created_at")
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([groupId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("join_requests")
+}
+
+enum JoinRequestStatus {
+  pending
+  approved
+  rejected
+}
+
+// ============================================
+// MESSAGES
+// ============================================
+
+model Message {
+  id                String    @id @default(uuid())
+  groupId           String    @map("group_id")
+  senderId          String    @map("sender_id")
+  clientMessageId   String    @map("client_message_id")
+  type              String
+  content           String?
+  mediaUrl          String?   @map("media_url")
+  mediaType         String?   @map("media_type")
+  parentMessageId   String?   @map("parent_message_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  editedAt          DateTime? @map("edited_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  group  Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sender User  @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, clientMessageId])
+  @@index([groupId, createdAt])
+  @@index([senderId])
+  @@map("messages")
+}
+
+// ============================================
+// MODERATION & REPORTS
+// ============================================
+
+model Report {
+  id           String           @id @default(uuid())
+  reporterId   String           @map("reporter_id")
+  targetType   ReportTargetType @map("target_type")
+  targetId     String           @map("target_id")
+  groupId      String?          @map("group_id")
+  reason       String
+  description  String?
+  status       ReportStatus     @default(pending)
+  resolution   String?
+  resolvedBy   String?          @map("resolved_by")
+  resolvedAt   DateTime?        @map("resolved_at")
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  reporter     User   @relation("reporter", fields: [reporterId], references: [id])
+  reportedUser User?  @relation("reported_user", fields: [targetId], references: [id], map: "report_target_user_fk")
+  group        Group? @relation(fields: [groupId], references: [id])
+
+  @@index([targetType, targetId])
+  @@index([groupId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("reports")
+}
+
+enum ReportTargetType {
+  user
+  message
+  group
+}
+
+enum ReportStatus {
+  pending
+  resolved
+  dismissed
+}
+
+// ============================================
+// AUDIT & ANALYTICS
+// ============================================
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String?  @map("actor_id")
+  groupId   String?  @map("group_id")
+  action    String
+  targetType String? @map("target_type")
+  targetId  String?  @map("target_id")
+  metadata  Json     @default("{}")
+  ipAddress String?  @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([actorId])
+  @@index([groupId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model AnalyticsEvent {
+  id         String   @id @default(uuid())
+  eventType  String   @map("event_type")
+  userId     String?  @map("user_id")
+  groupId    String?  @map("group_id")
+  metadata   Json     @default("{}")
+  timestamp  DateTime @default(now())
+
+  @@index([eventType])
+  @@index([userId])
+  @@index([groupId])
+  @@index([timestamp])
+  @@map("analytics_events")
+}
