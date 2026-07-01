@@ -4,6 +4,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
 import { HealthController } from './health.controller';
+import { AppUpdateController } from './app-update.controller';
 
 // Core modules
 import { PrismaModule } from './common/prisma/prisma.module';
@@ -62,6 +63,6 @@ import { StorageModule } from './storage/storage.module';
       useClass: ThrottlerGuard,
     },
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, AppUpdateController],
 })
 export class AppModule {}
