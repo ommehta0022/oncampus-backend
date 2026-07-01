@@ -27,7 +27,8 @@ export class AuthService {
   // Phone OTP flow via Firebase
   async startPhoneAuth(phone: string, deviceId: string) {
     // Rate limit check
-    const rateLimitKey = `otp:rate:${phone}`;
+    const phoneHash = this.hashPhone(phone);
+    const rateLimitKey = `otp:rate:${phoneHash}`;
     const canProceed = await this.redis.checkRateLimit(rateLimitKey, 5, 3600);
 
     if (!canProceed) {
@@ -39,7 +40,7 @@ export class AuthService {
 
     // Store challenge in Redis
     await this.redis.storeOtp(challengeId, {
-      phone,
+      phoneHash,
       deviceId,
       attempts: 0,
       createdAt: Date.now(),
@@ -73,6 +74,10 @@ export class AuthService {
     const phone = decodedToken.phone_number;
     if (!phone) {
       throw new UnauthorizedException('Phone number not found in token');
+    }
+
+    if (challenge.phoneHash !== this.hashPhone(phone)) {
+      throw new UnauthorizedException('Phone mismatch');
     }
 
     // Check if device matches
@@ -236,7 +241,14 @@ export class AuthService {
   }
 
   private hashPhone(phone: string): string {
-    return crypto.createHash('sha256').update(phone).digest('hex');
+    const secret = this.configService.get<string>('PHONE_HASH_SECRET');
+    if (!secret && this.configService.get('NODE_ENV') === 'production') {
+      throw new Error('PHONE_HASH_SECRET is required in production');
+    }
+
+    return secret
+      ? crypto.createHmac('sha256', secret).update(phone).digest('hex')
+      : crypto.createHash('sha256').update(phone).digest('hex');
   }
 
   private hashToken(token: string): string {

@@ -135,6 +135,15 @@ export class UsersService {
   }
 
   async registerPushToken(userId: string, deviceId: string, pushToken: string, platform: string) {
+    const existingDevice = await this.prisma.userDevice.findUnique({
+      where: { id: deviceId },
+      select: { userId: true },
+    });
+
+    if (existingDevice && existingDevice.userId !== userId) {
+      throw new BadRequestException('Device belongs to another user');
+    }
+
     await this.prisma.userDevice.upsert({
       where: { id: deviceId },
       create: {
@@ -175,10 +184,14 @@ export class UsersService {
   }
 
   async revokeDevice(userId: string, deviceId: string) {
-    await this.prisma.userDevice.update({
-      where: { id: deviceId },
+    const result = await this.prisma.userDevice.updateMany({
+      where: { id: deviceId, userId },
       data: { revokedAt: new Date() },
     });
+
+    if (result.count === 0) {
+      throw new NotFoundException('Device not found');
+    }
 
     // Also revoke refresh tokens for this device
     await this.prisma.refreshToken.updateMany({

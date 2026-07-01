@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
+import { APP_GUARD } from '@nestjs/core';
+import { HealthController } from './health.controller';
 
 // Core modules
 import { PrismaModule } from './common/prisma/prisma.module';
@@ -54,5 +56,12 @@ import { StorageModule } from './storage/storage.module';
     NotificationsModule,
     StorageModule,
   ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
+  controllers: [HealthController],
 })
 export class AppModule {}

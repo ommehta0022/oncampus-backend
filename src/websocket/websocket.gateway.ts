@@ -1,5 +1,5 @@
 import {
-  WebSocketGateway,
+  WebSocketGateway as NestWebSocketGateway,
   WebSocketServer,
   SubscribeMessage,
   OnGatewayConnection,
@@ -8,24 +8,32 @@ import {
   MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger, UseGuards } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { RedisService } from '@/common/redis/redis.service';
 
-@WebSocketGateway({
+function socketCorsOrigin() {
+  const origins = process.env.CORS_ORIGINS?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? [];
+  if (process.env.NODE_ENV === 'production') {
+    return origins.filter((origin) => origin !== '*');
+  }
+  return origins.length > 0 ? origins : ['http://localhost:3000', 'http://localhost:3001'];
+}
+
+@NestWebSocketGateway({
   cors: {
-    origin: '*',
+    origin: socketCorsOrigin(),
     credentials: true,
   },
   path: '/realtime',
 })
-export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
-  private readonly logger = new Logger(WebSocketGateway.name);
+  private readonly logger = new Logger(RealtimeGateway.name);
 
   constructor(
     private jwtService: JwtService,
@@ -46,11 +54,32 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
       }
 
       // Verify JWT
-      const payload = this.jwtService.verify(token, {
+      const payload = this.jwtService.verify<{ sub: string; deviceId: string }>(token, {
         secret: this.configService.get('JWT_SECRET'),
       });
 
       const userId = payload.sub;
+
+      if (payload.deviceId !== deviceId) {
+        this.logger.warn(`Connection rejected: device mismatch for user ${userId}`);
+        client.disconnect();
+        return;
+      }
+
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { status: true },
+      });
+      const device = await this.prisma.userDevice.findUnique({
+        where: { id: deviceId },
+        select: { userId: true, revokedAt: true },
+      });
+
+      if (!user || user.status === 'banned' || !device || device.userId !== userId || device.revokedAt) {
+        this.logger.warn(`Connection rejected: inactive user or device for user ${userId}`);
+        client.disconnect();
+        return;
+      }
 
       // Store user info in socket
       client.data.userId = userId;
@@ -224,6 +253,14 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
     const userId = client.data.userId;
     const { groupId } = data;
 
+    const member = await this.prisma.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+    });
+    if (!member || member.status !== 'active') {
+      client.emit('error', { message: 'Not a member' });
+      return;
+    }
+
     // Broadcast to others in group
     client.to(`group:${groupId}`).emit('user.typing', {
       groupId,
@@ -239,6 +276,14 @@ export class WebSocketGateway implements OnGatewayConnection, OnGatewayDisconnec
   ) {
     const userId = client.data.userId;
     const { groupId } = data;
+
+    const member = await this.prisma.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+    });
+    if (!member || member.status !== 'active') {
+      client.emit('error', { message: 'Not a member' });
+      return;
+    }
 
     client.to(`group:${groupId}`).emit('user.typing', {
       groupId,

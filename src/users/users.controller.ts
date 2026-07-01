@@ -17,6 +17,12 @@ import { CurrentUser } from '@/auth/decorators/current-user.decorator';
 import { UsersService } from './users.service';
 import { UpdateProfileDto, RegisterPushTokenDto } from './dto/users.dto';
 
+type UploadedAvatarFile = {
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+};
+
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UsersController {
@@ -36,7 +42,7 @@ export class UsersController {
   @UseInterceptors(FileInterceptor('file'))
   async updateAvatar(
     @CurrentUser() user: any,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile() file: UploadedAvatarFile,
   ) {
     if (!file) {
       throw new BadRequestException('File is required');

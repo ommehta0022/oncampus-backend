@@ -19,14 +19,16 @@ export class StorageController {
       dto.bucket,
       dto.fileType,
       dto.fileSize,
+      dto.groupId,
     );
   }
 
   @Get('signed-download-url')
   async getSignedDownloadUrl(
+    @CurrentUser() user: any,
     @Query('bucket') bucket: string,
     @Query('filePath') filePath: string,
   ) {
-    return this.storageService.getSignedDownloadUrl(bucket, filePath);
+    return this.storageService.getSignedDownloadUrl(user.userId, bucket, filePath);
   }
 }

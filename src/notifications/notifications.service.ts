@@ -33,7 +33,9 @@ export class NotificationsService {
       return;
     }
 
-    const tokens = devices.map(d => d.pushToken).filter(Boolean);
+    const tokens = devices
+      .map(d => d.pushToken)
+      .filter((token): token is string => Boolean(token));
 
     try {
       const response = await this.firebase.sendMulticastPushNotification(tokens, notification);
@@ -43,7 +45,8 @@ export class NotificationsService {
         const failedTokens: string[] = [];
         response.responses.forEach((resp, idx) => {
           if (!resp.success) {
-            failedTokens.push(tokens[idx]);
+            const failedToken = tokens[idx];
+            if (failedToken) failedTokens.push(failedToken);
             this.logger.warn(`Push failed for token ${tokens[idx]}: ${resp.error?.message}`);
           }
         });

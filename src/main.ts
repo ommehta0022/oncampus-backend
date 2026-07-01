@@ -2,12 +2,25 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
-import * as compression from 'compression';
+import compression from 'compression';
 import { AppModule } from './app.module';
+
+function parseCorsOrigins(rawOrigins?: string): string[] {
+  const origins = rawOrigins
+    ?.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean) ?? [];
+
+  if (process.env.NODE_ENV === 'production' && (origins.length === 0 || origins.includes('*'))) {
+    throw new Error('CORS_ORIGINS must list exact origins in production');
+  }
+
+  return origins.length > 0 ? origins : ['http://localhost:3000', 'http://localhost:3001'];
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
-    logger: ['error', 'warn', 'log', 'debug', 'verbose'],
+    logger: process.env.NODE_ENV === 'production' ? ['error', 'warn', 'log'] : ['error', 'warn', 'log', 'debug'],
   });
 
   const configService = app.get(ConfigService);
@@ -15,7 +28,7 @@ async function bootstrap() {
   // Security
   app.use(helmet());
   app.enableCors({
-    origin: configService.get('CORS_ORIGINS')?.split(',') || '*',
+    origin: parseCorsOrigins(configService.get('CORS_ORIGINS')),
     credentials: true,
   });
 

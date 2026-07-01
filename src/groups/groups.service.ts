@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
+import { GroupVisibility, JoinPolicy } from '@prisma/client';
 import { PrismaService } from '@/common/prisma/prisma.service';
 import { RedisService } from '@/common/redis/redis.service';
 import { CreateGroupDto, UpdateGroupDto } from './dto/groups.dto';
@@ -30,8 +31,8 @@ export class GroupsService {
         description: dto.description,
         city: dto.city,
         category: dto.category,
-        visibility: dto.visibility,
-        joinPolicy: dto.joinPolicy,
+        visibility: dto.visibility as GroupVisibility,
+        joinPolicy: dto.joinPolicy as JoinPolicy,
         memberLimit: dto.memberLimit || 50000,
         institutionId: dto.institutionId,
         createdBy: userId,
@@ -156,8 +157,8 @@ export class GroupsService {
         name: dto.name,
         description: dto.description,
         category: dto.category,
-        visibility: dto.visibility,
-        joinPolicy: dto.joinPolicy,
+        visibility: dto.visibility as GroupVisibility | undefined,
+        joinPolicy: dto.joinPolicy as JoinPolicy | undefined,
         memberLimit: dto.memberLimit,
         updatedAt: new Date(),
       },
