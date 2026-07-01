@@ -12,11 +12,6 @@ Dockerfile
 npm run start:prod
 ```
 
-### Pre-Deploy Command:
-```
-npm run prisma:migrate
-```
-
 ### Environment Variables (Set in Railway Dashboard):
 ```
 NODE_ENV=production
@@ -43,4 +38,4 @@ CORS_ORIGINS=https://admin.yourdomain.com,https://yourdomain.com
 ### Notes:
 - Railway will auto-assign a public URL
 - WebSocket will be available at: wss://your-app.railway.app/realtime
-- Database migrations run automatically on deploy
+- Database schema has been applied through the Supabase SQL Editor migration

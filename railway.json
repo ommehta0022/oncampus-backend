@@ -6,7 +6,6 @@
   },
   "deploy": {
     "startCommand": "npm run start:prod",
-    "preDeployCommand": "npm run prisma:migrate",
     "healthcheckPath": "/v1/health",
     "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",
