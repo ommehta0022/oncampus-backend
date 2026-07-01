@@ -1,7 +1,11 @@
 # Multi-stage build for production
-FROM node:20-alpine AS builder
+FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 # Copy package files
 COPY package*.json ./
@@ -20,9 +24,13 @@ RUN npx prisma generate
 RUN npm run build
 
 # Production stage
-FROM node:20-alpine
+FROM node:22-bookworm-slim
 
 WORKDIR /app
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 # Copy package files
 COPY package*.json ./

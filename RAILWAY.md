@@ -2,14 +2,19 @@
 
 ## Railway Deployment
 
-### Build Command:
+### Builder:
 ```
-npm install && npm run prisma:generate && npm run build
+Dockerfile
 ```
 
 ### Start Command:
 ```
 npm run start:prod
+```
+
+### Pre-Deploy Command:
+```
+npm run prisma:migrate
 ```
 
 ### Environment Variables (Set in Railway Dashboard):
@@ -32,7 +37,7 @@ CORS_ORIGINS=https://admin.yourdomain.com,https://yourdomain.com
 ```
 
 ### Health Check:
-- Path: `/v1/health` (to be added)
+- Path: `/v1/health`
 - Port: 4000
 
 ### Notes:
