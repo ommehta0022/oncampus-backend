@@ -24,27 +24,56 @@ export class AuthService {
     private configService: ConfigService,
   ) {}
 
+  // Dev OTP verification (no Firebase needed)
+  async verifyDevOtp(phone: string, deviceId: string) {
+    const phoneHash = this.hashPhone(phone);
+
+    let user = await this.prisma.user.findUnique({ where: { phoneHash } });
+    if (!user) {
+      user = await this.prisma.user.create({ data: { phoneHash, verified: false } });
+      this.logger.log(`New user created (dev): ${user.id}`);
+    }
+
+    await this.prisma.userDevice.upsert({
+      where: { id: deviceId },
+      create: { id: deviceId, userId: user.id, platform: 'dev', trusted: true },
+      update: { lastSeenAt: new Date(), revokedAt: null },
+    });
+
+    const tokens = await this.generateTokens(user.id, deviceId);
+    return { userId: user.id, isNewUser: !user.name, ...tokens };
+  }
+
   // Phone OTP flow via Firebase
-  async startPhoneAuth(phone: string, deviceId: string) {
-    // Rate limit check
+  async startPhoneAuth(phone: string, deviceId?: string) {
+    // Rate limit check (skip if Redis unavailable)
     const phoneHash = this.hashPhone(phone);
     const rateLimitKey = `otp:rate:${phoneHash}`;
-    const canProceed = await this.redis.checkRateLimit(rateLimitKey, 5, 3600);
-
-    if (!canProceed) {
-      throw new BadRequestException('Too many OTP requests. Try again later.');
+    try {
+      const canProceed = await this.redis.checkRateLimit(rateLimitKey, 5, 3600);
+      if (!canProceed) {
+        throw new BadRequestException('Too many OTP requests. Try again later.');
+      }
+    } catch (e) {
+      if (e instanceof BadRequestException) throw e;
+      // Redis unavailable — allow OTP start
     }
 
     // Generate challenge ID
     const challengeId = nanoid();
 
-    // Store challenge in Redis
-    await this.redis.storeOtp(challengeId, {
-      phoneHash,
-      deviceId,
-      attempts: 0,
-      createdAt: Date.now(),
-    }, 300); // 5 minutes
+    // Store challenge in Redis (skip if unavailable)
+    try {
+      await this.redis.storeOtp(challengeId, {
+        phoneHash,
+        deviceId: deviceId ?? 'unknown',
+        attempts: 0,
+        createdAt: Date.now(),
+      }, 300); // 5 minutes
+    } catch {
+      // Redis unavailable — challenge ID returned but not stored
+      this.logger.warn('OTP challenge could not be stored in Redis — Redis unavailable');
+    }
 
     // In production, Firebase handles OTP sending on client side
     // This just returns the challenge ID for verification later

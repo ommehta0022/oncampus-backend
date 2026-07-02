@@ -21,6 +21,30 @@ import {
 export class AuthController {
   constructor(private authService: AuthService) {}
 
+  @Post('otp/verify-dev')
+  @HttpCode(HttpStatus.OK)
+  async verifyOtpDev(
+    @Body() body: { phone: string; code: string },
+    @Headers('x-device-id') deviceId: string,
+  ) {
+    // Dev mode: accepts hardcoded OTP code without Firebase
+    const devCode = process.env.DEV_OTP_CODE || '123456';
+    const devMode = process.env.DEV_MODE === 'true';
+
+    if (!devMode) {
+      throw new Error('Dev OTP endpoint is disabled in production');
+    }
+
+    if (body.code !== devCode) {
+      throw new Error(`Invalid OTP. Expected: ${devCode}`);
+    }
+
+    return this.authService.verifyDevOtp(
+      body.phone,
+      deviceId || 'dev-device',
+    );
+  }
+
   @Post('otp/start')
   @HttpCode(HttpStatus.OK)
   async startPhoneAuth(
